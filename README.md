@@ -120,7 +120,7 @@ Populate `train_images/` and `valid_images/`:
   - --finetune_output_dir: Where to save the final LoRA adapter for the LM side.
  
 ## Citation
-To cite LeapRec in your work, please use the following BibTeX entry:
+To cite LaViC in your work, please use the following BibTeX entry:
 ```bibtex
 @inproceedings{jeon25adapting,
   title = "Adapting large vision-language models to visually-aware conversational recommendation",
