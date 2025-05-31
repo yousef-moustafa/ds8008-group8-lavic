@@ -118,3 +118,13 @@ Populate `train_images/` and `valid_images/`:
   - --item_meta_path: JSON with item metadata (titles, etc.).
   - --image_dir: Directory containing product images.
   - --finetune_output_dir: Where to save the final LoRA adapter for the LM side.
+ 
+## Citation
+To cite LeapRec in your work, please use the following BibTeX entry:
+```bibtex
+@inproceedings{jeon25adapting,
+  title = "Adapting large vision-language models to visually-aware conversational recommendation",
+  author = "Hyunsik Jeon and Satoshi Koide and Yu Wang and Zhankui He and Julian McAuley",
+  year = "2025",
+  booktitle = "KDD"
+}
