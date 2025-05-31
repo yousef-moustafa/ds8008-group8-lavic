@@ -1,4 +1,5 @@
 # LaViC: Large Vision-Language Conversational Recommendation Framework
+[![DOI](https://zenodo.org/badge/930728835.svg)](https://doi.org/10.5281/zenodo.15560047)
 
 This repository provides scripts for training LaViC in a visually-aware conversational recommendation setting:
 
