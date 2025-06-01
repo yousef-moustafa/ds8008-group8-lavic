@@ -1,7 +1,7 @@
 # LaViC: Large Vision-Language Conversational Recommendation Framework
 [![DOI](https://zenodo.org/badge/930728835.svg)](https://doi.org/10.5281/zenodo.15560047)
 
-This repository provides scripts for training LaViC in a visually-aware conversational recommendation setting:
+This repository provides implementation of "Adapting Large Vision-Language Models to Visually-Aware Conversational Recommendation" (LaViC) which is published at KDD 2025.
 
 1. **Image Crawling** (`crawl_images.py`):
 Crawls images before training LaViC.
