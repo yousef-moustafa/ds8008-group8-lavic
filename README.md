@@ -21,7 +21,7 @@
 
 # Temp holder
 
-download the project image files here
+download the project image files here https://drive.google.com/drive/folders/12DVXBrEX0kCgH0Lj38R472GG9REr-Rm8?usp=sharing
 after that in LaViC-main folder run remove_fail_image.py as some images can not be downloaded
 after than for running on the subset:
  - go to data folder
