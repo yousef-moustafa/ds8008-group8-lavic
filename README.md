@@ -19,6 +19,21 @@
 
 ---
 
+# Temp holder
+
+download the project image files here
+after that in LaViC-main folder run remove_fail_image.py as some images can not be downloaded
+after than for running on the subset:
+ - go to data folder
+ - run create_home_sub_images.py
+ - run make_home_item2meta_subset.py
+ - Then use this python commend to run the distillation
+ - NOTE NOTE that the knowledge_distillation.py has been modified to run locally, experimentation with the OG file if you run on colab
+
+```python src/knowledge_distillation.py   --model_name llava-hf/llava-v1.6-mistral-7b-hf   --train_data ./data/item2meta_train_amazon_home.json   --val_data ./data/item2meta_valid.jsonl   --train_images_dir ./data/amazon_home_train_images_subset   --val_images_dir ./data/valid_images   --output_dir ./out_distilled_amazon_home_test   --lr 5e-5   --weight_decay 1e-5   --num_epochs 1   --batch_size 1```
+
+
+
 ## Project Overview
 
 This repository contains Group 8's reimplementation of **LaViC** (Large Vision-Language Conversational Recommendation Framework), originally proposed by Jeon et al. and published at **KDD 2025**.
