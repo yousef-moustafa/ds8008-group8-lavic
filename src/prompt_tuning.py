@@ -18,7 +18,7 @@ import re
 import pytorch_lightning as pl
 import torch
 from PIL import Image
-from peft import LoraConfig, get_peft_model, TaskType
+from peft import LoraConfig, get_peft_model, TaskType, PeftModel
 from pytorch_lightning import seed_everything
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoProcessor, LlavaForConditionalGeneration
@@ -301,6 +301,7 @@ class LLaVAModel(pl.LightningModule):
         self.data_collator = DataCollatorForLLaVA(processor, tokenizer, max_length=args.max_length)
         self.test_results = []
 
+    '''
     def forward(self, input_ids, attention_mask, images, image_token_mask, images_per_sample_lengths, labels=None):
         device = next(self.model.parameters()).device
         input_ids = input_ids.to(device)
@@ -355,6 +356,70 @@ class LLaVAModel(pl.LightningModule):
             labels=labels
         )
         return outputs
+    '''
+    def forward(self, input_ids, attention_mask, images, image_token_mask, images_per_sample_lengths, labels=None):
+      device = next(self.model.parameters()).device
+      input_ids = input_ids.to(device)
+      attention_mask = attention_mask.to(device)
+      image_token_mask = image_token_mask.to(device)
+      if labels is not None:
+          labels = labels.to(device)
+
+      core = get_llava_core(self.model)
+
+      # text embeddings from full wrapped model
+      inputs_embeds = self.model.get_input_embeddings()(input_ids)
+
+      if images is not None:
+          images = images.to(device, dtype=torch.float16)
+
+          B_text = input_ids.size(0)
+          B_prime = images.shape[0]           # total candidate images across batch
+          num_views = images.shape[1]         # should be 5
+          C, H, W = images.shape[2], images.shape[3], images.shape[4]
+
+          # flatten for vision tower
+          images_reshaped = images.view(B_prime * num_views, C, H, W)
+
+          with torch.no_grad():
+              vision_outputs = core.vision_tower(images_reshaped)
+
+          # take CLS per sub-image
+          cls_states = vision_outputs.last_hidden_state[:, 0, :]   # (B_prime * 5, hidden)
+          cls_states = cls_states.view(B_prime, num_views, -1)     # (B_prime, 5, hidden)
+
+          candidate_count = B_prime // B_text
+          cls_states = cls_states.view(B_text, candidate_count, num_views, -1)
+
+          # project to LM hidden size
+          cls_states = core.multi_modal_projector(cls_states)
+
+          # replace placeholder image-token embeddings
+          for b_idx in range(B_text):
+              image_positions = torch.nonzero(image_token_mask[b_idx], as_tuple=False).squeeze(-1)
+              if image_positions.numel() == 0:
+                  continue
+
+              needed_tokens = candidate_count * num_views
+              pos_count = min(len(image_positions), needed_tokens)
+
+              for c in range(candidate_count):
+                  offset_c = c * num_views
+                  for i in range(num_views):
+                      idx_token = offset_c + i
+                      if idx_token >= pos_count:
+                          break
+                      col = image_positions[idx_token].item()
+                      inputs_embeds[b_idx, col, :] = cls_states[b_idx, c, i, :]
+
+      # call full wrapped model so outputs.loss exists
+      outputs = self.model(
+          input_ids=None,
+          attention_mask=attention_mask,
+          inputs_embeds=inputs_embeds,
+          labels=labels
+      )
+      return outputs
 
     def training_step(self, batch, batch_idx):
         inputs = self.data_collator(batch)
@@ -384,6 +449,7 @@ class LLaVAModel(pl.LightningModule):
         self.log('val_loss', val_loss, on_epoch=True, prog_bar=True, batch_size=len(batch))
         return {'val_loss': val_loss}
 
+    '''
     def test_step(self, batch, batch_idx):
         with torch.no_grad():
             inputs = self.data_collator(batch)
@@ -458,6 +524,91 @@ class LLaVAModel(pl.LightningModule):
             recall = evaluate_recall_at_k(recommended_ids, gt_items_list, k=1)
             self.log('test_recall', recall, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(batch))
             return {'test_recall': recall}
+            '''
+    
+    def test_step(self, batch, batch_idx):
+      with torch.no_grad():
+          inputs = self.data_collator(batch)
+          device = next(self.model.parameters()).device
+
+          input_ids = inputs['input_ids'].to(device)
+          attention_mask = inputs['attention_mask'].to(device)
+          image_token_mask = inputs['image_token_mask'].to(device)
+          images = inputs['images']
+
+          core = get_llava_core(self.model)
+
+          # text embeddings from full wrapped model
+          inputs_embeds = self.model.get_input_embeddings()(input_ids)
+
+          if images is not None:
+              images = images.to(device, dtype=torch.float16)
+
+              B_text = input_ids.size(0)
+              B_prime = images.shape[0]
+              num_views = images.shape[1]
+              C, H, W = images.shape[2], images.shape[3], images.shape[4]
+
+              images_reshaped = images.view(B_prime * num_views, C, H, W)
+
+              vision_outputs = core.vision_tower(images_reshaped)
+
+              cls_states = vision_outputs.last_hidden_state[:, 0, :]
+              cls_states = cls_states.view(B_prime, num_views, -1)
+
+              candidate_count = B_prime // B_text
+              cls_states = cls_states.view(B_text, candidate_count, num_views, -1)
+
+              cls_states = core.multi_modal_projector(cls_states)
+
+              for b_idx in range(B_text):
+                  image_positions = torch.nonzero(image_token_mask[b_idx], as_tuple=False).squeeze(-1)
+                  if image_positions.numel() == 0:
+                      continue
+
+                  needed_tokens = candidate_count * num_views
+                  pos_count = min(len(image_positions), needed_tokens)
+
+                  for c in range(candidate_count):
+                      offset_c = c * num_views
+                      for i in range(num_views):
+                          idx_token = offset_c + i
+                          if idx_token >= pos_count:
+                              break
+                          col = image_positions[idx_token].item()
+                          inputs_embeds[b_idx, col, :] = cls_states[b_idx, c, i, :]
+
+          # generate from full wrapped model, not language_model directly
+          generated_ids = self.model.generate(
+              input_ids=None,
+              inputs_embeds=inputs_embeds,
+              attention_mask=attention_mask,
+              max_new_tokens=10,
+              num_beams=1,
+              do_sample=False,
+              pad_token_id=self.tokenizer.pad_token_id,
+          )
+
+          generated_texts = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
+          recommended_ids = []
+          for txt in generated_texts:
+              match = re.findall(r'\bB[A-Z0-9]{9}\b', txt.strip())
+              recommended_ids.append(match[0][:10] if match else None)
+
+          gt_items_list = [b['gt_items'] for b in batch]
+          entry_idxs = [b['entry_idx'] for b in batch]
+
+          for i in range(len(batch)):
+              self.test_results.append({
+                  'entry_idx': entry_idxs[i],
+                  'recommended_id': recommended_ids[i],
+                  'response': generated_texts[i]
+              })
+
+          recall = evaluate_recall_at_k(recommended_ids, gt_items_list, k=1)
+          self.log('test_recall', recall, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(batch))
+          return {'test_recall': recall}
 
     def configure_optimizers(self):
         params = [p for p in self.model.parameters() if p.requires_grad]
@@ -467,6 +618,7 @@ class LLaVAModel(pl.LightningModule):
             weight_decay=self.args.weight_decay
         )
         return optimizer
+    
 
 
 ##############################################################
@@ -485,10 +637,65 @@ def find_llm_linear_layer_names(llm_module, prefix="language_model"):
     return linear_names
 
 
+def get_llava_core(model):
+    """
+    Walk through common wrapper chains (PEFT over PEFT over HF model)
+    until we find the object that has:
+      - vision_tower
+      - multi_modal_projector
+      - language_model
+    """
+    seen = set()
+    queue = [model]
+
+    while queue:
+        cand = queue.pop(0)
+        if cand is None:
+            continue
+
+        obj_id = id(cand)
+        if obj_id in seen:
+            continue
+        seen.add(obj_id)
+
+        if (
+            hasattr(cand, "vision_tower")
+            and hasattr(cand, "multi_modal_projector")
+            and hasattr(cand, "language_model")
+        ):
+            return cand
+
+        # explore common wrapper attributes
+        for attr in ["model", "base_model"]:
+            if hasattr(cand, attr):
+                nxt = getattr(cand, attr)
+                if nxt is not None:
+                    queue.append(nxt)
+
+    print("\n[DEBUG] Could not find Llava core.")
+    print("Top object type:", type(model))
+    if hasattr(model, "model"):
+        print("model.model:", type(getattr(model, "model")))
+    if hasattr(model, "base_model"):
+        print("model.base_model:", type(getattr(model, "base_model")))
+        bm = getattr(model, "base_model")
+        if hasattr(bm, "model"):
+            print("model.base_model.model:", type(getattr(bm, "model")))
+            bmm = getattr(bm, "model")
+            if hasattr(bmm, "model"):
+                print("model.base_model.model.model:", type(getattr(bmm, "model")))
+
+    raise AttributeError("Could not find Llava core.")
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="Recommendation Prompt Tuning with pretrained LLaVA v1.6 + LM LoRA.")
     parser.add_argument("--model_dir", type=str, required=True,
-                        help="Path to the base or partially LoRA-updated model directory.")
+                    help="Path to the distilled vision LoRA adapter directory.")
+    parser.add_argument("--base_model_name", type=str,
+                        default="llava-hf/llava-v1.6-mistral-7b-hf",
+                        help="Base LLaVA model name or path.")
     parser.add_argument("--candidate_type", type=str, default="candidates_st",
                         help="JSON key for candidate items.")
     parser.add_argument("--finetune_output_dir", type=str, default="./out_finetuned",
@@ -512,13 +719,16 @@ def main():
 
     # 1) Load the base or partially LoRA-updated model
     base_model = LlavaForConditionalGeneration.from_pretrained(
-        args.model_dir,
+        args.base_model_name,
         torch_dtype=torch.float16
     ).to(device)
 
-    processor = AutoProcessor.from_pretrained(args.model_dir)
+    processor = AutoProcessor.from_pretrained(args.base_model_name)
     processor.tokenizer.padding_side = "right"
     tokenizer = processor.tokenizer
+
+    # attach the distilled vision LoRA adapter
+    base_model = PeftModel.from_pretrained(base_model, args.model_dir).to(device)
 
     # 2) Add 5 special tokens
     special_tokens_dict = {'additional_special_tokens': IMAGE_TOKENS}
@@ -529,7 +739,8 @@ def main():
     base_model.resize_token_embeddings(len(tokenizer))
 
     # 3) LoRA to Language Model (re-introduce)
-    lm_linear_names = find_llm_linear_layer_names(base_model.language_model, prefix="language_model")
+    core = get_llava_core(base_model)
+    lm_linear_names = find_llm_linear_layer_names(core.language_model, prefix="model.language_model")
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
         inference_mode=False,
@@ -542,9 +753,10 @@ def main():
     model.to(device)
 
     # 4) Load metadata & data
-    args.train_data_path = f"../data/{args.category}/train.jsonl"
-    args.val_data_path = f"../data/{args.category}/valid.jsonl"
-    args.test_data_path = f"../data/{args.category}/test.jsonl"
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    args.train_data_path = os.path.join(project_root, "data", args.category, "train.jsonl")
+    args.val_data_path = os.path.join(project_root, "data", args.category, "valid.jsonl")
+    args.test_data_path = os.path.join(project_root, "data", args.category, "test.jsonl")
     item_meta = load_item_meta(args.item_meta_path)
     train_data = load_jsonl(args.train_data_path)
     val_data = load_jsonl(args.val_data_path)
