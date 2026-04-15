@@ -60,7 +60,8 @@ For this reimplementation, we mainly focus on the **Home** domain (`amazon_home`
 |        ├── knowledge_distillation.py
 |        └── prompt_tuning.py
 ├── DS8008_Final_Project_Group_8_LaViC.ipynb
-├── DS8008_Final_Project_Group_8_LaViC_Abstract.docx
+├── DS8008_Final_Project_Group_8_LaViC_Abstract.pdf
+├── LaViC.ipynb
 ├── README.md
 └── requirements.txt
 ```
