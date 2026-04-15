@@ -85,6 +85,8 @@ Place both create_home_sub_images.py and make_home_item2meta_subset.py inside th
  - The code will extract exactly 2 images per item by default, that is, a training image size of 5674 images
  - You can change this by editing the .py with **MAX_IMAGES_PER_ITEM = 2 on line 11**
 
+**You need to unzip item2meta_train.json.zip and move the item2meta_train.json to data folder**
+
 Run these two lines in order:
 ```bash
 python create_home_sub_images.py
