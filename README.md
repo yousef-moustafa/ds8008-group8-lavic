@@ -44,23 +44,25 @@ For this reimplementation, we mainly focus on the **Home** domain (`amazon_home`
 
 ## Repository Structure
 ```plaintext
-ds8008-group8-lavic/
-  ├── notebooks/
-  │   └── LaViC_Report.ipynb
-  │   ├── LaViC.ipynb
-  ├── data/
-  │   ├── amazon_home/
-  │   │   ├── train.jsonl
-  │   │   ├── valid.jsonl
-  │   │   └── test.jsonl
-  │   ├── item2meta_train.json.zip
-  │   └── item2meta_valid.jsonl
-  └── src/
-      ├── create_home_sub_images.py
-      ├── make_home_item2meta_subset.py
-      ├── crawl_images.py
-      ├── knowledge_distillation.py
-      └── prompt_tuning.py
+├── ds8008-group8-lavic/
+|    ├── data/
+|    │   ├── amazon_home/
+|    │   │   ├── train.jsonl
+|    │   │   ├── valid.jsonl
+|    │   │   └── test.jsonl
+|    │   ├── item2meta_train.json.zip
+|    │   └── item2meta_valid.jsonl
+|    └── src/
+|        ├── create_home_sub_images.py
+|        ├── make_home_item2meta_subset.py
+|        ├── baseline_llava_zero_shot.py
+|        ├── crawl_images.py
+|        ├── knowledge_distillation.py
+|        └── prompt_tuning.py
+├── DS8008_Final_Project_Group_8_LaViC.ipynb
+├── DS8008_Final_Project_Group_8_LaViC_Abstract.docx
+├── README.md
+└── requirements.txt
 ```
 
 ---
